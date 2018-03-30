@@ -1,0 +1,14 @@
+[
+  {
+    "r1": "/mnt/illumina-data-drive/114301_M02018_0099_000000000-RW3WG/Data/Intensities/BaseCalls/S1_L001_R1_001.fastq.gz",
+    "r2": "/mnt/illumina-data-drive/114301_M02018_0099_000000000-RW3WG/Data/Intensities/BaseCalls/S1_L001_R2_001.fastq.gz",
+    "phage_name": "Phage_A",
+    "sample_size": 50000
+  },
+  {
+    "r1": "/mnt/illumina-data-drive/114301_M02018_0099_000000000-RW3WG/Data/Intensities/BaseCalls/S2_L001_R1_001.fastq.gz",
+    "r2": "/mnt/illumina-data-drive/114301_M02018_0099_000000000-RW3WG/Data/Intensities/BaseCalls/S2_L001_R2_001.fastq.gz",
+    "phage_name": "Phage_B",
+    "sample_size": 50000
+  }
+]

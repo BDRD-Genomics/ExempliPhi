@@ -1,0 +1,7 @@
+.idea/
+output/
+luigi.cfg
+bin/
+test-data/
+__pycache__
+.DS_Store
