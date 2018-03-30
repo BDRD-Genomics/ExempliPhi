@@ -4,25 +4,30 @@ Version 0.1.0
 Abstract
 =========
 
-With a sharp increase in multi-drug resistant bacterial infections, there has been a renewed interest in phage therapy.
-Large and diverse phage libraries (collections of phages whose host range and genomes have been characterized) are
-essential for effective use of phage therapy. In order to develop these libraries and gain Federal Drug Administration
-(FDA) approval, precise and detailed genomic characterization is necessary. The foundational step in doing so is
-producing a coding complete genome. Assembling phages to coding complete status requires several special considerations:
-i) Phages have small genome sizes (ranging from ~2.5 kb to ~500 kb) and modern high-throughput sequencing (HTS)
-technologies are capable of producing a vast amount of data. This can lead to over-sequencing which impedes the ability
-of genome assembly software to produce full and accurate contigs. ii) Many phages have redundant genomic ends which can
-lead to assembly artifacts in the form of artificial overlaps at the ends of phage contigs. iii) Phages have a variety
-of packaging mechanisms which lead to different types of genomic termini. Different types of packaging mechanisms
-require different methods to resolve the termini. iv) Finally, an accurate coding complete assembly for therapeutic
-phages is critical because errors in assemblies can result in incorrect sequences that alter outcomes of genomic
-screening for bacterial virulence factors and antibiotic resistance genes, both of which present severe consequences for
-therapeutic applications in a patient. Here we present an automated pipeline for bringing phages to coding complete from
-raw paired-end sequencing data. The pipeline deals with the considerations listed above by: i) performing both full and
-subsampled assemblies, ii) automatically removing artificial repeats at the ends of phage contigs, iii) using PhageTerm
-to resolve genomic termini, iv) and performing two assembly pipelines in parallel and making sure different tools
-agree on a consensus phage contig.  This pipeline is implemented in Python, can be run locally or in a Sun Grid Engine
-(SGE) cluster computing environment, and will be publicly available at https://github.com/BDRD-Genomics.
+With a sharp increase in multi-drug resistant bacterial infections, there has been a renewed 
+interest in phage therapy. Large and diverse phage libraries (collections of phages whose host 
+range and genomes have been characterized) are essential for effective use of phage therapy. 
+In order to develop these libraries and gain Federal Drug Administration (FDA) approval, precise
+and detailed genomic characterization is necessary. The foundational step in doing so is 
+producing a coding complete genome. Assembling phages to coding complete status requires several 
+special considerations: i) Phages have small genome sizes (ranging from ~2.5 kb to ~500 kb) and 
+modern high-throughput sequencing (HTS) technologies are capable of producing a vast amount of 
+data. This can lead to over-sequencing which impedes the ability of genome assembly software to 
+produce full and accurate contigs. ii) Many phages have redundant genomic ends which can lead to 
+assembly artifacts in the form of artificial overlaps at the ends of phage contigs. iii) Phages 
+have a variety of packaging mechanisms which lead to different types of genomic termini. 
+Different types of packaging mechanisms require different methods to resolve the termini. 
+iv) Finally, an accurate coding complete assembly for therapeutic phages is critical because 
+errors in assemblies can result in incorrect sequences that alter outcomes of genomic screening 
+for bacterial virulence factors and antibiotic resistance genes, both of which present severe 
+consequences for therapeutic applications in a patient. Here we present an automated pipeline for
+bringing phages to coding complete from raw paired-end sequencing data. The pipeline deals with 
+the considerations listed above by: i) performing both full and subsampled assemblies, ii) 
+automatically removing artificial repeats at the ends of phage contigs, iii) using PhageTerm 
+to resolve genomic termini, iv) and performing two assembly pipelines in parallel and making sure
+different tools agree on a consensus phage contig. This pipeline is implemented in Python, can be
+run locally or in a Sun Grid Engine (SGE) cluster computing environment, and will be publicly 
+available at https://github.com/BDRD-Genomics.
 
 Overview
 =========
@@ -30,7 +35,7 @@ Overview
 Raw paired-end illumina data is used as input.
 
 This pipeline runs on the Luigi framework. Please refer to Luigi documentation
-(luigi.readthedocs.io/en/) for instructions on how to set up the luigi daemon and
+(https://luigi.readthedocs.io/en/stable/) for instructions on how to set up the luigi daemon and
 monitoring jobs with the web interface.
 
 
