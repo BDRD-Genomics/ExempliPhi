@@ -1,4 +1,4 @@
-Phage Therapy Candidate Assesment
+Phage Therapy Candidate Assessment
 Version 0.1.0
 
 Abstract
