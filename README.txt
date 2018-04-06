@@ -1,4 +1,4 @@
-PHATCAT: PHAge Therapy Candidate assesmenT
+Phage Therapy Candidate Assesment
 Version 0.1.0
 
 Abstract
