@@ -4,7 +4,7 @@ import json
 import pickle
 from mailmerge import MailMerge
 
-from phatcat.pipeline import *
+from exempliphi.pipeline import *
 
 
 def generate_report(output_path, PIPELINE_ROOT, merge_values):
@@ -17,9 +17,16 @@ def generate_report(output_path, PIPELINE_ROOT, merge_values):
     template = os.path.join(PIPELINE_ROOT, 'Phage_Genomics_Report_Template.docx')
     document = MailMerge(template)
 
-    # Convert all values to strings
+    # Convert all values to formatted strings
     for key in merge_values.keys():
-        merge_values[key] = str(merge_values[key])
+        if type(merge_values[key]) == int:
+            merge_values[key] = '{:,}'.format(merge_values[key])
+
+        elif type(merge_values[key]) == float:
+            merge_values[key] = '{:,.2f}'.format(merge_values[key])
+
+        else:
+            merge_values[key] = str(merge_values[key])
 
     # Add collected values to template
     document.merge(**merge_values)
@@ -29,7 +36,7 @@ def generate_report(output_path, PIPELINE_ROOT, merge_values):
 
 
 if __name__ == '__main__':
-    print('Using PHATCAT version 0.1.0 (beta)')
+    print('Using ExempliPhi version 0.1.1 (beta)')
 
     if not len(sys.argv) > 1:
         # TODO: print help

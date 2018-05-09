@@ -301,7 +301,7 @@ class SGEJobTask(luigi.Task):
         # Build qsub submit command
         self.outfile = os.path.join(self.tmp_dir, 'job.out')
         self.errfile = os.path.join(self.tmp_dir, 'job.err')
-        submit_cmd = _build_qsub_command(job_str, self.task_family, self.outfile,
+        submit_cmd = _build_qsub_command(job_str, self.job_name, self.outfile,
                                          self.errfile, self.parallel_env, self.n_cpu, self.queue)
         logger.info('qsub command: \n' + submit_cmd)
 
@@ -330,19 +330,13 @@ class SGEJobTask(luigi.Task):
             qstat_out = qstat_out.decode('utf-8')
             sge_status = _parse_qstat_state(qstat_out, self.job_id)
             if sge_status == 'r':
-                logger.debug('Job is running...')
-            elif sge_status == 'qw':
-                logger.debug('Job is pending...')
+                logger.debug('(SGE Status = r) Job is running...')
+            elif sge_status == 'qw' or sge_status == 't':
+                logger.debug('(SGE Status = qw) Job is pending...')
             elif 'E' in sge_status:
-                logger.error('Job has FAILED:\n' + '\n'.join(self._fetch_task_failures()))
+                logger.error('(SGE Status = E) Job has FAILED:\n' + '\n'.join(self._fetch_task_failures()))
                 break
-            elif sge_status == 't' or sge_status == 'u':
-                # Then the job could either be failed or done.
-                errors = self._fetch_task_failures()
-                if not errors:
-                    logger.info('Job is done')
-                else:
-                    logger.error('Job has FAILED:\n' + '\n'.join(errors))
+            elif sge_status == 'T' or sge_status == 'u':
                 break
             else:
                 logger.info('Job status is UNKNOWN!')

@@ -1,7 +1,7 @@
 # EDIT FOLLOWING LINE BEFORE RUNNING
 condabin="<path to anaconda bin directory here>"
-${condabin}/conda create -y -n phatcat
-source activate phatcat
+${condabin}/conda create -y -n exempliphi
+source activate exempliphi
 ${condabin}/conda config --add channels conda-forge
 ${condabin}/conda config --add channels anaconda
 ${condabin}/conda config --add channels bioconda
@@ -18,4 +18,5 @@ ${condabin}/conda create -y --name py27 python=2.7
 source activate py27
 ${condabin}/conda install -y matplotlib numpy pandas scikit-learn scipy statsmodels reportlab
 source deactivate
+
 

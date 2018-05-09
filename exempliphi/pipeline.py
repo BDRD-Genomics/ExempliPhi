@@ -10,11 +10,11 @@ import platform
 from datetime import datetime
 from collections import OrderedDict
 from datetime import datetime
-from luigi.contrib.sge import SGEJobTask
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
-import numpy as np
+import sqlite3
 
+from exempliphi.sge import SGEJobTask
 
 
 '''
@@ -69,14 +69,14 @@ class Globals(luigi.Config):
     '''
     Global variables. Set using luigi configuration file.
     '''
-    # Path to installation of phatcat
+    # Path to installation of exempliphi
     PIPELINE_ROOT = luigi.Parameter(default=os.path.split(os.path.dirname(os.path.realpath(__file__)))[0])
     # Directory to write output to
     OUTPUT_DIR = luigi.Parameter(default=os.path.join(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0], 'output'))
     # Number of cores available in computing environment
     NUM_THREADS = luigi.IntParameter(default=1)
     # Coda environment holding dependencies
-    PRIMARY_CONDA_ENV = luigi.Parameter(default='phatcat')
+    PRIMARY_CONDA_ENV = luigi.Parameter(default='exempliphi')
     # Lower boundary of insert size
     INSERT_SIZE_LB = luigi.IntParameter(default=250)  # Defaults were recommendations from Dr. Ken Frey
     # Upper boundary of insert size
@@ -101,12 +101,19 @@ class GenericSGEJobTask(SGEJobTask):
     poll_time = luigi.IntParameter(default=5)
     parallel_env = luigi.Parameter(default='orte')
 
+    def __init__(self, *args, **kwargs):
+        super(GenericSGEJobTask, self).__init__(*args, **kwargs)
+        self.job_name = "%s__%s" % (self.task_family, self.phage_name)
 
-class PC_Task(GenericSGEJobTask if Globals().SGE else luigi.Task):
+
+class ExempliTask(GenericSGEJobTask if Globals().SGE else luigi.Task):
     '''
     This is a base class for other classes in the pipeline to inherit from. It helps set the structure for a task.
     '''
     g = Globals()
+
+    def __init__(self, *args, **kwargs):
+        super(ExempliTask, self).__init__(*args, **kwargs)
 
     def out_dir(self, temp=False):
         '''
@@ -129,6 +136,11 @@ class PC_Task(GenericSGEJobTask if Globals().SGE else luigi.Task):
             target_dict[key] = luigi.LocalTarget(output_files[key])
 
         return target_dict
+
+    def complete(self):
+        if os.path.isdir(self.out_dir()):
+            return True
+        return False
 
     def work(self):
         self.start_task()
@@ -161,9 +173,11 @@ class PC_Task(GenericSGEJobTask if Globals().SGE else luigi.Task):
         self.fh.setFormatter(logging.Formatter('\n%(asctime)s level=%(levelname)s:\n%(message)s'))
         self.logger.addHandler(self.fh)
 
-        self.logger.info('Globals SGE = %s' % str(self.g.SGE))
         # Show task info in log
-        init_info_message = '##### Running %s %s#####\nParameters:' % (type(self).__name__, platform.node() if self.g.SGE else '')
+        if self.g.SGE:
+            init_info_message = '##### Running %s on %s #####\nParameters:' % (type(self).__name__, platform.node())
+        else:
+            init_info_message = '##### Running %s #####\nParameters:' % type(self).__name__
         for key in param_map.keys():
             init_info_message = '%s\n\t%s = %s' % (init_info_message, key, param_map[key])
         self.logger.info(init_info_message)
@@ -173,12 +187,16 @@ class PC_Task(GenericSGEJobTask if Globals().SGE else luigi.Task):
 
         try:
             self.do_task()
-            self._update_merge_vals()
-            assert self._check_output()
-            self.logger.info('Task completed without errors!')
 
         except Exception:
             self.logger.exception('Task %s failed!' % type(self).__name__)
+            raise
+
+        finally:
+            self._update_merge_vals()
+
+        assert self._check_output()
+        self.logger.info('Task completed without errors!')
 
     def do_task(self):
         '''
@@ -269,12 +287,58 @@ class PC_Task(GenericSGEJobTask if Globals().SGE else luigi.Task):
             os.mkdir(path)
 
 
+class SeqRecord_Header_Handler():
+    '''
+    This class is for adding/extracting/and deleting key-value information in fasta headers parsed by biopython
+    '''
+    def __init__(self, SeqRecord):
+        self.record = SeqRecord
+
+    def get_header_features(self):
+        '''
+        Returns header Key-value pairs as a dict
+        '''
+        return {kv.split('=')[0]: kv.split('=')[1] for kv in self.record.description.split()[1:]}
+
+    def set_header_features(self, feature_dict):
+        '''
+        Sets header key-values to represent input dictionary
+        :param feature_dict: python dict storing KV pairs to be written into header
+        '''
+        description = self.record.id
+
+        for key in feature_dict.keys():
+            description = '%s %s=%s' % (description, str(key), str(feature_dict[key]))
+
+        self.record.description = description
+
+    def delete_header_feature(self, key):
+        '''
+        Delete a key-value pair from header
+        :param key: key of pair to remove
+        '''
+        current_features = self.get_header_features()
+        if key in current_features:
+            del current_features[key]
+            self.set_header_features(current_features)
+        else:
+            raise ValueError('Key %s not found in features' % str(key))
+
+    def add_header_feature(self, key, value):
+        '''
+        Add key-value feature to a header
+        '''
+        current_features = self.get_header_features()
+        current_features[str(key)] = str(value)
+        self.set_header_features(current_features)
+
+
 '''
 ************************************************************
                      TASKS BEGIN HERE
 ************************************************************
 '''
-class Copy_Reads(PC_Task):
+class Copy_Reads(ExempliTask):
     '''
     This task copies reads from illumina folder to a local directory
     '''
@@ -370,7 +434,7 @@ class Copy_Reads(PC_Task):
         return num_reads
 
 
-class EDGE_QC(PC_Task):
+class EDGE_QC(ExempliTask):
     '''
     Perform Quality filtering/trimming using the same script used by EDGE
     '''
@@ -458,22 +522,22 @@ class EDGE_QC(PC_Task):
 
         # Average quality before QC
         qual_matrix = os.path.join(self.out_dir(temp=True), 'qa.%s.quality.matrix' % self.phage_name)
-        merge_values['AvgQual'] = '{:,.2f}'.format(self._get_avg_qual(qual_matrix))
+        merge_values['AvgQual'] = self._get_avg_qual(qual_matrix)
         os.remove(qual_matrix)
 
         # Parse number/percent of reads which passed EDGE QC from stats file
         after_trimming = False
         for line in open(self.out_file_path(temp=True)['stats'], 'r'):
             if line.startswith('Reads #: ') and not after_trimming:
-                merge_values['TotalNumReads'] = '{:,}'.format(int(line.strip()[9:]))
+                merge_values['TotalNumReads'] = int(line.strip()[9:])
 
             elif line.startswith('After Trimming'):
                 after_trimming = True
 
             elif line.startswith('Reads #: ') and after_trimming:
-                merge_values['NumQCReadsEDGE'] = '{:,}'.format(int(line.strip()[9:]))
+                merge_values['NumQCReadsEDGE'] = int(line.strip()[9:])
                 merge_values['PercentQCReadsEDGE'] = '{:.2%}'.format(
-                    float(line.strip()[9:]) / float(merge_values['TotalNumReads'].replace(',', ''))
+                    float(line.strip()[9:]) / float(merge_values['TotalNumReads'])
                 )
 
         return merge_values
@@ -495,7 +559,7 @@ class EDGE_QC(PC_Task):
         return total_score/num_bases
 
 
-class CLC_QC(PC_Task):
+class CLC_QC(ExempliTask):
     '''
     Perform Quality filtering/trimming using the CLC Assembly Cell's script
     '''
@@ -517,9 +581,6 @@ class CLC_QC(PC_Task):
 
     # Set the minimum length of output reads
     minlength = luigi.IntParameter(default=50)
-
-    # SGE specific
-    queue = 'clc_q'
 
     def out_dir(self, temp=False):
         '''
@@ -585,14 +646,14 @@ class CLC_QC(PC_Task):
         for line in open(self.out_file_path(temp=True)['stats'], 'r'):
             if line.startswith('Output reads:'):
                 line_list = line.split()
-                merge_values['NumQCReadsCLC'] = '{:,}'.format(int(line_list[-3]))
+                merge_values['NumQCReadsCLC'] = int(line_list[-3])
                 merge_values['PercentQCReadsCLC'] = '%s%%' % line_list[-2]
                 break
 
         return merge_values
 
 
-class Subsample_Reads(PC_Task):
+class Subsample_Reads(ExempliTask):
     '''
     Randomly sample a certain number of reads. Uses seqtk.
     '''
@@ -614,6 +675,10 @@ class Subsample_Reads(PC_Task):
 
     # SGE specific
     n_cpu = 1
+
+    def __init__(self, *args, **kwargs):
+        super(Subsample_Reads, self).__init__(*args, **kwargs)
+        self.job_name = "%s__%s__%s" % (self.task_family, self.phage_name, self.assembly_branch)
 
     def out_dir(self, temp=False):
         '''
@@ -678,11 +743,11 @@ class Subsample_Reads(PC_Task):
         '''
         merge_values = {}
         if self.sample_size:
-            merge_values['SSNumReads'] = '{:,}'.format(self.sample_size)
+            merge_values['SSNumReads'] = self.sample_size
         return merge_values
 
 
-class SPAdes(PC_Task):
+class SPAdes(ExempliTask):
     '''
     Run SPAdes assembler on a set of reads.
     '''
@@ -698,6 +763,11 @@ class SPAdes(PC_Task):
 
     # Run with meta-spades?
     meta = luigi.BoolParameter(default=False)
+
+    def __init__(self, *args, **kwargs):
+        super(SPAdes, self).__init__(*args, **kwargs)
+        if self.sample_size:
+            self.job_name = "%s__%s__subsampled" % (self.task_family, self.phage_name)
 
     def out_dir(self, temp=False):
         '''
@@ -779,9 +849,6 @@ class SPAdes(PC_Task):
         merge_values = {}
         n50, longest_contig_length, num_contigs_gt700, assembly_size = \
             get_stats_from_assembly(self.out_file_path(temp=True)['contigs'])
-        n50 = '{:,}'.format(n50)
-        longest_contig_length = '{:,}'.format(longest_contig_length)
-        num_contigs_gt700 = '{:,}'.format(num_contigs_gt700)
 
         if self.sample_size:
             merge_values['NumSPAdesSSContigs'] = num_contigs_gt700
@@ -798,7 +865,7 @@ class SPAdes(PC_Task):
         return merge_values
 
 
-class CLC_Assembly(PC_Task):
+class CLC_Assembly(ExempliTask):
     """
     Run CLC assembler on a set of reads
     """
@@ -816,7 +883,12 @@ class CLC_Assembly(PC_Task):
     estimate_distances = luigi.BoolParameter(default=True)
 
     # SGE specific
-    queue = 'clc_q'
+    queue = luigi.Parameter(default='clc_q')
+
+    def __init__(self, *args, **kwargs):
+        super(CLC_Assembly, self).__init__(*args, **kwargs)
+        if self.sample_size:
+            self.job_name = "%s__%s__subsampled" % (self.task_family, self.phage_name)
 
     def out_dir(self, temp=False):
         '''
@@ -878,9 +950,6 @@ class CLC_Assembly(PC_Task):
         merge_values = {}
         n50, longest_contig_length, num_contigs_gt700, assembly_size = \
             get_stats_from_assembly(self.out_file_path(temp=True)['contigs'])
-        n50 = '{:,}'.format(n50)
-        longest_contig_length = '{:,}'.format(longest_contig_length)
-        num_contigs_gt700 = '{:,}'.format(num_contigs_gt700)
 
         if self.sample_size:
             merge_values['NumCLCSSContigs'] = num_contigs_gt700
@@ -897,7 +966,7 @@ class CLC_Assembly(PC_Task):
         return merge_values
 
 
-class Map_Reads_To_Assembly(PC_Task):
+class Map_Reads_To_Assembly(ExempliTask):
     '''
     Use CLC's read mapper to map reads to an assembly and output:
      - coverage metrics
@@ -918,7 +987,13 @@ class Map_Reads_To_Assembly(PC_Task):
     assembly_branch = luigi.Parameter()
 
     # SGE specific
-    queue = 'clc_q'
+    queue = luigi.Parameter(default='clc_q')
+
+    def __init__(self, *args, **kwargs):
+        super(Map_Reads_To_Assembly, self).__init__(*args, **kwargs)
+        self.job_name = "%s__%s__%s" % (self.task_family, self.phage_name, self.assembly_branch)
+        if self.sample_size:
+            self.job_name = "%s__subsampled" % self.job_name
 
     def out_dir(self, temp=False):
         '''
@@ -1034,6 +1109,8 @@ class Map_Reads_To_Assembly(PC_Task):
 
         contig_cov_stats = self._create_contig_coverage_stats()
 
+        self._update_header_info(contig_cov_stats)
+
         self.merge_values = self._get_merge_values(contig_cov_stats)
 
     def _create_contig_coverage_stats(self):
@@ -1041,6 +1118,7 @@ class Map_Reads_To_Assembly(PC_Task):
         Parse idxstats and depth files and output per-contig coverage stats
         :return: ordered dict with per-cov stats
         '''
+        # { header: { 'length': len, 'num_reads': # reads, 'avg_cov': average coverage, 'min_cov': minimum coverage } }
         contig_stats = OrderedDict()
 
         # Parse idxstats to get number of reads mapped to each contig
@@ -1070,7 +1148,21 @@ class Map_Reads_To_Assembly(PC_Task):
                     'length']
                 contig_stats[current_contig]['min_cov'] = min_cov
 
-        return contig_stats # TODO: Put coverage stats into contig headers
+        return contig_stats
+
+    def _update_header_info(self, contig_cov_stats):
+        '''
+        Add coverage stats to header
+        '''
+        records = []
+        with open(self.out_file_path(temp=True)['contigs']) as contigs_file:
+            i = 1
+            for record in SeqIO.parse(contigs_file, 'fasta'):
+                h_handler = SeqRecord_Header_Handler(record)
+                h_handler.set_header_features(contig_cov_stats[record.id[:-12]])
+                records.append(record)
+
+        SeqIO.write(records, self.out_file_path(temp=True)['contigs'], 'fasta')
 
     def _get_merge_values(self, contig_cov_stats):
         '''
@@ -1084,8 +1176,6 @@ class Map_Reads_To_Assembly(PC_Task):
             if contig_cov_stats[key]['length'] > longest_len:
                 longest_cov = contig_cov_stats[key]['avg_cov']
                 longest_len = contig_cov_stats[key]['length']
-
-        longest_cov = '{:,.2f}'.format(longest_cov)
 
         if self.assembly_branch == 'CLC':
             if self.sample_size:
@@ -1102,7 +1192,7 @@ class Map_Reads_To_Assembly(PC_Task):
         return merge_values
 
 
-class Extract_Longest_Contig(PC_Task):
+class Extract_Longest_Contig(ExempliTask):
     '''
     Pull out the longest contig from fasta and put it in a separate file
     '''
@@ -1121,6 +1211,12 @@ class Extract_Longest_Contig(PC_Task):
 
     # SGE specific
     n_cpu = 1
+
+    def __init__(self, *args, **kwargs):
+        super(Extract_Longest_Contig, self).__init__(*args, **kwargs)
+        self.job_name = "%s__%s__%s" % (self.task_family, self.phage_name, self.assembly_branch)
+        if self.sample_size:
+            self.job_name = "%s__subsampled" % self.job_name
 
     def out_dir(self, temp=False):
         '''
@@ -1166,7 +1262,7 @@ class Extract_Longest_Contig(PC_Task):
         SeqIO.write(longest_record, self.out_file_path(temp=True)['contig'], 'fasta')
 
 
-class Remove_Overlap(PC_Task):
+class Remove_Overlap(ExempliTask):
     '''
     Remove the 127 bp SPAdes overlap from a sequence if it exists
         - input = fasta file
@@ -1188,6 +1284,12 @@ class Remove_Overlap(PC_Task):
 
     # SGE specific
     n_cpu = 1
+
+    def __init__(self, *args, **kwargs):
+        super(Remove_Overlap, self).__init__(*args, **kwargs)
+        self.job_name = "%s__%s__%s" % (self.task_family, self.phage_name, self.assembly_branch)
+        if self.sample_size:
+            self.job_name = "%s__subsampled" % self.job_name
 
     def out_dir(self, temp=False):
         '''
@@ -1274,7 +1376,6 @@ class Remove_Overlap(PC_Task):
         :return: dict of merge values
         '''
         merge_values = {}
-        ol_len = '{:,}'.format(ol_len)
         if self.assembly_branch == 'CLC':
             if self.sample_size:
                 merge_values['CLCSSOverlap'] = ol_len
@@ -1290,7 +1391,7 @@ class Remove_Overlap(PC_Task):
         return merge_values
 
 
-class Compare_Sequences(PC_Task):
+class Compare_Sequences(ExempliTask):
     '''
     Compare the largest contigs produced by all assemblies and show which are identical
     '''
@@ -1458,7 +1559,7 @@ class Compare_Sequences(PC_Task):
         return merge_values
 
 
-class PhageTerm(PC_Task):
+class PhageTerm(ExempliTask):
     '''
     Run PhageTerm on a fasta file
     '''
@@ -1539,19 +1640,15 @@ class Coding_Complete_Pipeline(luigi.WrapperTask):
 
     def requires(self):
         return {
-            #'raw_reads': Copy_Reads(r1=self.r1, r2=self.r2, phage_name=self.phage_name),
             'EDGE': EDGE_QC(r1=self.r1, r2=self.r2, phage_name=self.phage_name),
             'CLC': CLC_QC(r1=self.r1, r2=self.r2, phage_name=self.phage_name)
         }
 
     def additional_depends(self):
         # Need dynamic dependencies so we don't try to subsample a greater number of reads than we have left after QC
-        edge_num_reads = int(
-            pickle.load(open(self.input()['EDGE']['merge_values'].path, 'rb'))['NumQCReadsEDGE'].replace(',', '')
-        )
-        clc_num_reads = int(
-            pickle.load(open(self.input()['CLC']['merge_values'].path, 'rb'))['NumQCReadsCLC'].replace(',', '')
-        )
+        edge_num_reads = pickle.load(open(self.input()['EDGE']['merge_values'].path, 'rb'))['NumQCReadsEDGE']
+        clc_num_reads = pickle.load(open(self.input()['CLC']['merge_values'].path, 'rb'))['NumQCReadsCLC']
+
         sample_size_edge = 0
         if edge_num_reads > self.sample_size:
             sample_size_edge = self.sample_size
@@ -1573,6 +1670,7 @@ class Coding_Complete_Pipeline(luigi.WrapperTask):
                                                                                      phage_name=self.phage_name,
                                                                                      sample_size=sample_size_edge,
                                                                                      assembly_branch='EDGE')
+
         return dependencies
 
     def complete(self):

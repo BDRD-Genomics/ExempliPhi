@@ -5,3 +5,4 @@ bin/
 test-data/
 __pycache__
 .DS_Store
+.separator
