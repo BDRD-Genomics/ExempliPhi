@@ -1,13 +1,111 @@
 [Globals]
-NUM_THREADS = <NUMBER OF CORES AVAILABLE>
-OUTPUT_DIR = <WHERE TO WRITE OUTPUT TO>
-PRIMARY_CONDA_ENV = exempliphi
-SGE = <Running on SGE cluster?: True or False>
-NUM_NODES = <Number of nodes if running on cluster>
+; Number of cores to use on multithreaded tasks, can be overridden on a per task basis (int)
+NUM_THREADS=
+; Full path to output directory (path)
+OUTPUT_DIR=
+; Location of NCBI BLAST database (path)
+NT=
+; Number of luigi workers to run in parallel. This will be the maximum number of tasks executed concurrently (int)
+NUM_WORKERS=
+; Leave as exemplphi unless you are using a separate conda env (string)
+PRIMARY_CONDA_ENV=exempliphi
+; Either False, SGE, or SLURM (enum)
+CLUSTER=
 
-[core]
-log_level = <DEBUG, INFO, WARNING, ERROR, or CRITICAL>
+[ClusterTaskParameters]
+; Where should temporary files for jobs be stored? Defaults to output directory. (path)
+;shared_tmp_dir=
+; Remove temporary files after job is complete? Defaults to False. May be worth setting to true to debug issues. (bool)
+;dont_remove_tmp_dir=
+; How frequently (in seconds) should SGE/SLURM accounting be polled to update job status? Defaults to 5. (int)
+;poll_time=
+; If CLUSTER=SLURM, set this to the partition you which to use for all tasks except for tasks requiring CLC license. (string)
+;default_slurm_partition=
+; If CLUSTER=SGE, set this to the queue you which to use for all tasks except for tasks requiring CLC license. (string)
+;default_sge_queue=
+
+[EDGE_QC]
+; Trim quality level. Defaults to 30. (int)
+;q=
+; Average quality cutoff. Defaults to 30. (int)
+;avg_q=
+; Minimum read length. Defaults to 50. (int)
+;min_L=
+;Number of "N" bases allowed. Defaults to 2. (int)
+;n =
+; Low complexity filter ratio. Defaults to 0.85. (float)
+;lc=
+; Adapter FASTA (path)
+;adapter=
+; Cut #bp from ends
+;fiveEnd=
+;threeEnd=
+
+[CLC_QC]
+; Set the minimum quality for a good nucleotide. Defaults to 30. (int)
+;cutoff=
+; Set the maximum fraction of bad nucleotides to define a good quality region. Defaults to 0.1. (float)
+;badfraction=
+# Set the fraction of the read that must be of good quality. Defaults to 0. (float)
+;lengthfraction=
+; Set the minimum length of output reads. Defaults to 50. (int)
+;minlength=
+
+[SPAdes]
+ # Use meta-spades? Defaults to false. (bool)
+;meta=
+
+[CLC_Assembly]
+; If using SGE, list the queue owning the CLC license
+;queue=
+; If using SLURM, list the partition owning the CLC license
+;partition=
+; See CLC documentation for description of parameters.
+; Defaults to 64 (int)
+word_size=
+; Defaults to 200 (int)
+bubble_size=
+
+[Map_Reads_To_Assembly]
+; If using SGE, list the queue owning the CLC license
+;queue=
+; If using SLURM, list the partition owning the CLC license
+;partition=
 
 [PhageTerm]
-phageterm_loc = <FULL PATH TO PhageTerm.py>
-python2env = py27
+; Location of PhageTerm script ('PhageTerm.py' must be included in the path) (path)
+phageterm_loc=
+; PhageTerm specific conda environment (string)
+python2env=py2
+
+[Taxonomic_Profiling_Classify]
+; Location of the taxonomy sqlite database. This file will be created by update_taxonomy_database.sh
+; if is does not yet exist. (path)
+taxdb_loc=/<your_desired_path>/taxonomy.sqlite
+; If running on a headless server, xvfb is required to generate diagrams. (bool)
+use_xvfb=True
+; CLC, EDGE, or AUTO. Select the assembly to use for taxonomic classification manually or
+; automatically select quickest option (enum)
+assembly_branch=AUTO
+# [0-1] Abundance of reads as a percentage of total reads required in order to be considered "significant"
+; (highlighted and included in simplified diagram). Defaults to 0.002,(float)
+;significance_threshold =
+
+[BlastX]
+; Override default location of terminase blast database (path)
+;terminase_blast_db=
+; Override default location of integrase blast database (path)
+;integrase_blast_db=
+
+
+; For all following configurations, consult Luigi documentation for further explanation and options.
+; Generally, you can leave these alone.
+[worker]
+keep-alive=True
+max_keep_alive_idle_duration=200 seconds
+
+[Scheduler]
+retry_count=0
+
+[core]
+log_level=DEBUG

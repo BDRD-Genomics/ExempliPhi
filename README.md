@@ -12,9 +12,11 @@ This series of tasks includes:
    - SPAdes
    - CLC Assembly Cell
 4. Assembly artifact removal
-5. Comparing contigs
-6. Resolving genomic termini
-7. Generating a report
+5. Taxonomic Profiling
+6. Comparing contigs
+7. Comparing phage contig to terminase and integrase database
+8. Resolving genomic termini
+9. Generating a report
 
 ---
 
@@ -52,30 +54,44 @@ These instructions will help you get ExempliPhi running on your environment.
 
 For Mac and Linux only.
 
-If running on a SGE cluster you make nodes available to exempliphi by adding
-them to the queue 'all.q'
-
 CLC Assembly Cell (commercial software) is required to run this pipeline.
 https://www.qiagenbioinformatics.com/products/clc-assembly-cell/
 Add directory containing Assembly Cell tools to your PATH.
-If running on a cluster, you need to add nodes which are licensed to run
-Assembly Cell to the SGE queue 'clc_q'
+If running on a cluster, you add nodes which are licensed to run Assembly Cell 
+to a queue (SGE) or partition (SLURM). The name of this partition will be 
+entered in the configuration file. 
 
-Dependencies are downloaded and installed as conda packages. Download the latest version of Anaconda for python 3 from their website.
+Most dependencies are downloaded and installed through the conda package management system. 
+Download the latest version of Anaconda/miniconda for python 3 from their website.
 https://www.anaconda.com/download/
-Make sure the anaconda bin directory is in your PATH.
+Make sure the anaconda bin directory is in your PATH and that the CONDA_EXE environment variable is set.
 
-Edit install.sh so the condabin variable contains the path to the bin
-directory of the anaconda version you just downloaded.
-Run install.sh
+After installing conda, you can acquire dependencies by running **install.sh.** This will create two conda environments:
+exempliphi and py2. The 'exempliphi' conda environment will be used to run exempliphi and most tasks within the pipeline.
+The 'py2' conda environment will be used to run PhageTerm.
 
-Install PhageTerm
+PhageTerm is a software tool used to fix and reorient the termini of phage genomes. Install Phage Term from:
 https://sourceforge.net/projects/phageterm/
+Make sure the location where you install it is accessible from all cluster nodes if you are using a cluster. The location
+of PhageTerm must be given as a configuration later.
 
-Add path to this directory to PYTHONPATH. This can be done by adding this to your .bashrc/.bashprofile
-```
-export PYTHONPATH="${PYTHONPATH}:<PATH TO EXEMPLIPHI>"
-```
+ExempliPhi performs taxonomic profiling on contigs and unmapped reads (See latest manuscript for details on how this 
+works). This functionality depends on NCBI's nt (non-redundant nucleotide) BLAST database. The easiest way to download nt
+is with the update_blastdb.pl tool (this tool is available from within the exempliphi conda environment). Find details on
+how to run it *[here](https://www.ncbi.nlm.nih.gov/books/NBK537770/)*. The path to the location of this database will be
+given as a configuration later. In addition, the taxonomic profiling module requires a sqlite database which is created
+by update_taxonomy_database.sh. Prior to running this script, the 'taxdb_loc' configuration must be set so 
+update_taxonomy_database.sh knows where to save the database to (see following section for configuration instructions).
+Taxonomic profiling also uses the tool qualex, which is in the 3rd_party directory. Qualex must be compiled by going into
+3rd_party/qualex-ms-1.2 and running make. In addition, you need to run make in 3rd_party/qualex-ms-1.2/converter to get the 
+tool asc2bin. You may need to install blas, lapack, and fortran libraries for this to work.
+If on ubuntu, you can do this with the following command.
+`apt-get install -y libblas-dev liblapack-dev gfortran`
+For taxonomic profiling to work on headless servers, it must be run with xvfb. If this is the case install xvfb.
+`apt-get -y install xvfb`
+
+There are various other dynamically linked libraries that tools which are used by ExempliPhi mat try to link. You can ensure you have all of them with the following command:
+`apt-get update && apt-get install -y curl ca-certificates libapr1-dev libaprutil1-dev build-essential iputils-ping openssh-client ffmpeg libsm6 libxext6 libncurses5 `
 
 ### Configuring
 
@@ -83,54 +99,29 @@ This pipeline runs on the Luigi framework and uses Luigi's configuration system 
 Please read Luigi's documentation on this topic for more detailed information 
 (luigi.readthedocs.io/en/stable/configuration.html). 
 
-A template configuration file is provided as luigi.cfg.tmpl. This file contains a base set of required configurations. 
-However, any luigi parameter defined in the code can be defined with the configuration file. To make this file active, 
-copy it to the same directory as luigi.cfg
+A template configuration file is provided as luigi.cfg.tmpl. 
+To make this file active, copy it to the same directory as luigi.cfg
 ```
 cp luigi.cfg.tmpl luigi.cfg
 ```
 
-To ensure that the configurations will be read regardless of name or location of the configuration file, you can set an 
-environment variable pointing to the file.
-```
-export LUIGI_CONFIG_PATH=<Full path to configuration file>
-```
+Now edit luigi.cfg to desired settings. Each setting is described in the template. Settings which are commented out are
+optional. Settings which are not commented out must be set for ExempliPhi to run properly.
 
-Edit luigi.cfg to desired settings. A description of each required setting is found below
 
-#### GLOBALS 
+### Installation and configuration checklist
 
-##### _Parameters read into the pipeline which apply to more than one task._
-
----
-
-**NUM_THREADS -** _Number of threads tasks will run with. Set to the number of cores available in your computing environment._
-
-**OUTPUT_DIR -** _Location where the pipeline will output files to. Make sure users running pipeline have write permissions here._
-
-**PRIMARY_CONDA_ENV -** _The conda environment which contains the dependencies. Leave as exempliphi unless you install dependencies to a different environment._
-
-**SGE -** _Can be True or False. This will tell exempliphi if it should attempt to submit tasks to an SGE cluster. If false, it will run locally._
-
-**NUM_NODES -** _This needs to be filled out if SGE is set to True. Set to an integer that describes the number of nodes in the cluster you would like exempliphi to run on._
-
-#### PhageTerm
-
-##### _Parameters specific to PhageTerm task_
-
----
-
-**phageterm_loc -** _Location of the phageterm script you downloaded early. Should be full path, including filename_
-
-**python2env -** _A conda environment which runs python 2 and has dependencies for phageterm_
-
-#### core
-
-##### _Core Luigi specific parameters_
-
----
-
-**log_level -** _Verbosity of output. Possible values: DEBUG, INFO, WARNING, ERROR, or CRITICAL._
+1. Install CLC Assembly Cell 
+2. Install Conda
+3. Run install.sh
+4. Install PhageTerm
+5. Download NCBI's nt BLAST database
+6. Compile qualex and asc2bin
+7. Install xvfb if needed
+8. Install additional libraries
+9. Copy luigi.cfg.tmpl to luigi.cfg
+10. Edit luigi.cfg to desired configurations
+11. Run update_taxonomy_database.sh 
 
 
 ### Running
@@ -167,11 +158,11 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Contact
 
-matthew.r.lueder.ctr@mail.mil 
+logan.j.voegtly.ctr@mail.mil
 
 ## Disclaimer
 
 This work was funded by Naval Medical Research Center’s Advanced Medical Development Program, work unit number A1704. Casandra W. Philipson, Kimberly A. Bishop-Lilly are employees of the US government and LCDR Theron Hamilton is a military service member. This work was prepared as a part of official duties. Title 17 U.S.C. 105 provides that ‘Copyright protection under this title is not available for any work of the United States Government.’ Title 17 U.S.C. 101 defines a U.S. Government work as a work prepared by a military service member or employee of the U.S. Government as part of a person’s official duties. The views expressed in this article are those of the authors and do not necessarily reflect the official policy or position of the Department of the Navy, Defense Threat Reduction Agency, Department of Defense, nor the U.S. Government.
 
 
-_Version 0.1.1 beta_
+Version 2

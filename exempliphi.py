@@ -1,10 +1,39 @@
-import luigi
-from luigi.configuration import LuigiConfigParser
+# Copyright 2018-2019 Leidos Inc. Naval Medical Research Center Biological Defense Research Directorate
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+from ete3 import NCBITaxa
+
+import argparse
 import json
 import pickle
+import os
 from mailmerge import MailMerge
 
-from exempliphi.pipeline import *
+
+def parse_args():
+    arg_parser = argparse.ArgumentParser(
+        description='Run ExempliPhi pipeline with data specified in input json file')
+
+    arg_parser.add_argument('json_path', type=str, help='Input json file')
+
+    arg_parser.add_argument('-l', dest='local', action='store_true', help='Run locally (without SGE)')
+
+    arg_parser.add_argument(
+        '-o', dest='output_folder', required=False, type=str,
+        help='Relative to "OUTPUT_DIR" defined in [Globals] of luigi.cfg')
+
+    return arg_parser.parse_args()
 
 
 def generate_report(output_path, PIPELINE_ROOT, merge_values):
@@ -35,36 +64,38 @@ def generate_report(output_path, PIPELINE_ROOT, merge_values):
     document.write(output_path)
 
 
-if __name__ == '__main__':
-    print('Using ExempliPhi version 0.1.1 (beta)')
+def main(args):
+    print('Using ExempliPhi version 2')
+    # Set luigi.cfg
+    os.environ['LUIGI_CONFIG_PATH'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'luigi.cfg')
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-    if not len(sys.argv) > 1:
-        # TODO: print help
-        raise RuntimeError('Need phage parameter json as input')
+    import luigi
+    from exempliphi.pipeline import Coding_Complete_Pipeline
+    from exempliphi.global_config import global_config
 
     # Load in parameters for each phage from json file
-    with open(sys.argv[1]) as params:
+    with open(args.json_path) as params:
         parameter_list = json.load(params)
 
-    # Load configurations from luigi.config
-    cfg = LuigiConfigParser().instance()
-    OUTPUT_DIR = cfg.get('Globals', 'OUTPUT_DIR',
-                         default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'output'))
-    PIPELINE_ROOT = cfg.get('Globals', 'PIPELINE_ROOT', default=os.path.dirname(os.path.realpath(__file__)))
+    if args.output_folder:
+        out_dir = os.path.join(global_config.OUTPUT_DIR, args.output_folder)
+    else:
+        out_dir = global_config.OUTPUT_DIR
 
     job_array = []
     for phage_params in parameter_list:
-        job_array.append(Coding_Complete_Pipeline(**phage_params))
+        job_array.append(Coding_Complete_Pipeline(**phage_params, base_dir=out_dir))
 
-    if 'local' in sys.argv:
+    if args.local:
         luigi.build(job_array, no_lock=False, local_scheduler=True)
     else:
-        NUM_NODES = cfg.get('Globals', 'NUM_NODES', default=8)
-        luigi.build(job_array, no_lock=True, workers=NUM_NODES)
+        # NUM_NODES = cfg.get('Globals', 'NUM_NODES', default=8)
+        luigi.build(job_array, no_lock=True, workers=global_config.NUM_WORKERS)
 
     for phage_params in parameter_list:
         # Create folder for report - if old report exists, delete it
-        report_dir = os.path.join(OUTPUT_DIR, phage_params['phage_name'], 'report')
+        report_dir = os.path.join(out_dir, phage_params['phage_name'], 'report')
         report_path = os.path.join(report_dir, '%s_Phage_Genomics_Report.docx' % phage_params['phage_name'])
         if os.path.isfile(report_path):
             os.remove(report_path)
@@ -73,12 +104,16 @@ if __name__ == '__main__':
 
         # Collect merge values
         merge_values = {}
-        for root, dirs, files in os.walk(os.path.join(OUTPUT_DIR, phage_params['phage_name'])):
+        for root, dirs, files in os.walk(os.path.join(out_dir, phage_params['phage_name'])):
             for file in files:
                 if file[-14:] == 'merge_values.p':
                     merge_values.update(pickle.load(open(os.path.join(root, file), 'rb')))
 
-        generate_report(report_path, PIPELINE_ROOT, merge_values)
+        pickle.dump(merge_values, open(os.path.join(out_dir, phage_params['phage_name'],
+                                                    '%s_merge_values.p' % phage_params['phage_name']), "wb"))
+        generate_report(report_path, global_config.PIPELINE_ROOT, merge_values)
 
-    # Collect
-    print('Here')
+
+if __name__ == '__main__':
+    main(parse_args())
+
