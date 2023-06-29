@@ -158,7 +158,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Contact
 
-logan.j.voegtly.ctr@mail.mil
+regina.z.cer.civ@health.mil
 
 ## Disclaimer
 
